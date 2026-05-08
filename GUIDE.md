@@ -23,7 +23,7 @@ Repo layout we'll build toward:
 hybrid-router/
 ├── proxy/
 │   ├── server.py            # FastAPI app, OpenAI-compatible endpoints
-│   ├── backends.py          # Ollama, NIM, Anthropic adapters
+│   ├── backends.py          # Ollama, NIM
 │   ├── router.py            # Routing decision logic
 │   ├── trajectory.py        # Per-trajectory state tracker
 │   ├── features.py          # Feature extraction from requests
@@ -105,7 +105,7 @@ If this works, you're done with backend setup.
 ```bash
 brew install opencode      # macOS
 # or: curl -fsSL https://opencode.ai/install | bash
-opencode auth login        # at minimum, set up an Anthropic key for sanity-check runs later
+opencode auth login        
 ```
 
 Don't try to wire OpenCode to your proxy yet — first we'll build a passthrough proxy and then point OpenCode at it.
@@ -123,7 +123,6 @@ Create `.env`:
 
 ```
 NVIDIA_API_KEY=nvapi-...
-ANTHROPIC_API_KEY=sk-ant-...   # only for the validation runs in week 4
 OLLAMA_URL=http://localhost:11434
 NIM_URL=https://integrate.api.nvidia.com/v1
 PROXY_PORT=8000
