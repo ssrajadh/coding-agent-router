@@ -1,7 +1,8 @@
-import os
-import uuid
-import time
+import json
 import logging
+import time
+import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -26,16 +27,37 @@ backends = {
 }
 router = Router(mode=settings.router_mode)
 
+# Trajectory persistence directory (None disables disk writes)
+_traj_dir: Path | None = Path(settings.trajectory_dir) if settings.trajectory_dir else None
+if _traj_dir:
+    _traj_dir.mkdir(parents=True, exist_ok=True)
+
+
+def _flush_trajectory(traj) -> None:
+    if _traj_dir is None:
+        return
+    path = _traj_dir / f"{traj.id.replace('/', '__')}.json"
+    path.write_text(json.dumps({"id": traj.id, "steps": traj.steps}, default=str))
+
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
     body = await request.json()
     request_id = str(uuid.uuid4())
-    trajectory_id = body.get("user") or request.headers.get("x-session-id", "default")
+
+    # Session identity: prefer explicit header, fall back to body "user" field
+    trajectory_id = (
+        request.headers.get("x-session-id")
+        or body.get("user")
+        or "default"
+    )
     traj = trajectory_store.get_or_create(trajectory_id)
 
     decision = router.decide(body, traj)
-    log.info("req=%s traj=%s -> %s (%s)", request_id, trajectory_id, decision.backend, decision.reason)
+    log.info(
+        "req=%s traj=%s -> %s (%s)  step=%d",
+        request_id, trajectory_id, decision.backend, decision.reason, len(traj.steps),
+    )
 
     backend = backends[decision.backend]
     t0 = time.time()
@@ -53,6 +75,7 @@ async def chat_completions(request: Request):
         decision_reason=decision.reason,
         latency_s=elapsed,
     )
+    _flush_trajectory(traj)
 
     return JSONResponse(response)
 
@@ -60,3 +83,12 @@ async def chat_completions(request: Request):
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+@app.get("/trajectories/{trajectory_id:path}")
+def get_trajectory(trajectory_id: str):
+    """Debug endpoint: inspect a live trajectory by ID."""
+    traj = trajectory_store._store.get(trajectory_id)
+    if traj is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"id": traj.id, "steps": traj.steps}, media_type="application/json")

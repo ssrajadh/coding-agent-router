@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     nim_url: str = "https://integrate.api.nvidia.com/v1"
     proxy_port: int = 8000
     router_mode: str = "all_local"
+    # Directory where per-trajectory JSON files are written after each request.
+    # Set to "" to disable trajectory persistence.
+    trajectory_dir: str = "runs/trajectories"
 
 
 settings = Settings()
