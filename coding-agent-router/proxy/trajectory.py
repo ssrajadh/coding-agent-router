@@ -8,12 +8,15 @@ class Trajectory:
     steps: list = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
 
-    def record_step(self, request, response, backend, decision_reason, latency_s):
+    def record_step(
+        self, request, response, backend, decision_reason, latency_s, local_failed=False
+    ):
         self.steps.append({
             "ts": time.time(),
             "backend": backend,
             "reason": decision_reason,
             "latency_s": latency_s,
+            "local_failed": local_failed,
             "request_messages": request.get("messages", []),
             "request_tools": request.get("tools", []),
             "response_choice": response.get("choices", [{}])[0],
@@ -23,6 +26,27 @@ class Trajectory:
     def mark_local_failure(self):
         if self.steps:
             self.steps[-1]["local_failed"] = True
+
+    def last_action_repeated(self) -> bool:
+        if len(self.steps) < 2:
+            return False
+
+        def _tool_sig(step):
+            tc = (
+                (step.get("response_choice") or {})
+                .get("message", {})
+                .get("tool_calls")
+            )
+            if not tc:
+                return None
+            fn = tc[0].get("function", {})
+            return (fn.get("name"), fn.get("arguments"))
+
+        last_sig = _tool_sig(self.steps[-1])
+        if last_sig is None:
+            return False
+        # repeated if same tool+args appears in the 3 steps before the last
+        return any(_tool_sig(s) == last_sig for s in self.steps[-4:-1])
 
 
 class TrajectoryStore:
