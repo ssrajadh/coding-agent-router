@@ -1,0 +1,6 @@
+# Baseline: 50/50 coin flip per request. Bounds how much of the full system's
+# gain comes from "any frontier traffic at all" vs. the routing logic itself.
+router_mode: random
+issues: benchmark/issues.json
+parallel: 2
+max_steps: 60

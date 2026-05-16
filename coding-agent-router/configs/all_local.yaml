@@ -1,0 +1,5 @@
+# Baseline: every request goes to the local Ollama backend.
+router_mode: all_local
+issues: benchmark/issues.json
+parallel: 2
+max_steps: 60

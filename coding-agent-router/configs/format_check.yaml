@@ -1,0 +1,6 @@
+# Baseline: try local first, escalate only when the response fails format
+# validation (bad finish_reason, invalid tool call, unparseable JSON args).
+router_mode: format_check
+issues: benchmark/issues.json
+parallel: 2
+max_steps: 60

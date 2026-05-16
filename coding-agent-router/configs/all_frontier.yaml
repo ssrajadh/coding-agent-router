@@ -1,0 +1,6 @@
+# Upper-bound baseline: every request goes to NIM frontier. Runs on the 20-issue
+# subset to stay within NIM's 40 RPM rate limit and free-tier credit budget.
+router_mode: all_frontier
+issues: benchmark/issues_subset20.json
+parallel: 1
+max_steps: 60
