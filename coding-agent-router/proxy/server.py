@@ -19,11 +19,11 @@ log = logging.getLogger("proxy")
 app = FastAPI()
 trajectory_store = TrajectoryStore()
 backends = {
-    "local": OllamaBackend(settings.ollama_url, model="qwen3-coder-16k"),
+    "local": OllamaBackend(settings.ollama_url, model=settings.local_model),
     "frontier": NIMBackend(
         settings.nim_url,
         settings.nvidia_api_key,
-        model="qwen/qwen3-coder-32b-instruct",
+        model=settings.frontier_model,
     ),
 }
 router = Router(mode=settings.router_mode)
