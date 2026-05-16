@@ -11,6 +11,14 @@
 #     ./benchmark/run_experiments.sh full_system       # one config
 #     CONFIGS="all_local full_system" ./benchmark/run_experiments.sh
 #
+# Env vars:
+#     SMOKE=1            Use a 3-issue subset and skip the expensive configs.
+#                        For wiring validation on a 16 GB MBP.
+#     NO_EVAL=1          Don't run the swebench Docker evaluator. Predictions
+#                        JSONL is still written for later grading. Required on
+#                        locked-down machines without Docker.
+#     CONFIGS="..."      Whitespace-separated subset of configs to run.
+#
 # Outputs land under results/<config_name>/.
 # Re-running with the same output directory resumes from per-issue result files.
 
@@ -21,7 +29,13 @@ cd "$REPO_ROOT"
 
 # Run order: cheap baselines first so we have *something* if we run out of time.
 # all_frontier last because it costs money / hits NIM rate limits hardest.
-DEFAULT_CONFIGS=(all_local random format_check full_system all_frontier)
+if [[ "${SMOKE:-0}" == "1" ]]; then
+    # Pick the three most informative configs for wiring validation: the local
+    # baseline, the cheapest router (format_check), and the full system.
+    DEFAULT_CONFIGS=(all_local format_check full_system)
+else
+    DEFAULT_CONFIGS=(all_local random format_check full_system all_frontier)
+fi
 
 if [[ $# -gt 0 ]]; then
     CONFIGS_TO_RUN=("$@")
@@ -35,6 +49,26 @@ PROXY_PORT="${PROXY_PORT:-8000}"
 PROXY_URL="http://127.0.0.1:${PROXY_PORT}/v1"
 
 mkdir -p results logs
+
+# Smoke mode: carve a 3-issue file from issues_subset20.json and force every
+# config to use it. Lets MBP wiring tests finish in ~15 min instead of hours.
+SMOKE_ISSUES_FILE="benchmark/issues_smoke3.json"
+if [[ "${SMOKE:-0}" == "1" ]]; then
+    if [[ ! -f "$SMOKE_ISSUES_FILE" ]]; then
+        echo "→ Creating smoke 3-issue file at $SMOKE_ISSUES_FILE"
+        .venv/bin/python -c "
+import json
+src = json.load(open('benchmark/issues_subset20.json'))
+json.dump(src[:3], open('$SMOKE_ISSUES_FILE', 'w'), indent=2)
+"
+    fi
+fi
+
+extra_args=()
+if [[ "${NO_EVAL:-0}" == "1" ]]; then
+    extra_args+=(--no-eval)
+    echo "ℹ NO_EVAL=1: predictions.jsonl will be written but no swebench Docker eval will run"
+fi
 
 parse_yaml_field() {
     # cheap YAML reader: grep for "key:" at line start, strip key + whitespace + quotes
@@ -79,6 +113,12 @@ for cfg_name in "${CONFIGS_TO_RUN[@]}"; do
     parallel="$(parse_yaml_field "$cfg_path" parallel)"
     max_steps="$(parse_yaml_field "$cfg_path" max_steps)"
 
+    # Smoke override: ignore each config's issues field and use the tiny set.
+    if [[ "${SMOKE:-0}" == "1" ]]; then
+        issues="$SMOKE_ISSUES_FILE"
+        max_steps=20  # cap step budget to keep smoke fast
+    fi
+
     if [[ ! -f "$issues" ]]; then
         echo "SKIP: issues file $issues missing — run benchmark/sample_issues.py first" >&2
         continue
@@ -106,7 +146,8 @@ for cfg_name in "${CONFIGS_TO_RUN[@]}"; do
         --proxy-url "$PROXY_URL" \
         --max-steps "$max_steps" \
         --parallel "$parallel" \
-        --resume
+        --resume \
+        ${extra_args[@]+"${extra_args[@]}"}
     rc=$?
     set -e
 

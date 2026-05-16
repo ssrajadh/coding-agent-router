@@ -1,0 +1,25 @@
+# Proxy + benchmark runtime deps.
+# Versions pinned to what the Linux dev box validated against; macOS arm64 should
+# resolve compatible wheels for all of these.
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+httpx==0.28.1
+pydantic==2.13.4
+pydantic-settings==2.14.0
+tenacity==9.1.4
+python-dotenv==1.2.2
+PyYAML==6.0.3
+
+# SWE-bench sampling + evaluator wrapper. The swebench package is heavy
+# (pulls Docker SDK etc.) but only the sampling path is exercised on Mac;
+# the evaluator subprocess requires Docker and is skipped via --no-eval there.
+datasets==4.8.5
+swebench==4.1.0
+
+# Analysis / plotting (Phase 5)
+pandas==3.0.2
+matplotlib==3.10.9
+
+# Test deps
+pytest==9.0.3
+anyio==4.13.0

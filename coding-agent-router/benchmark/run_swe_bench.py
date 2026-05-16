@@ -143,6 +143,7 @@ def run_issue(
     proxy_url: str,
     max_steps: int,
     keep_workdir: bool,
+    skip_eval: bool = False,
 ) -> dict:
     iid = instance["instance_id"]
     session_id = f"{run_name}/{iid}"
@@ -168,13 +169,19 @@ def run_issue(
         if not patch.strip():
             log.warning("[%s] empty patch — no changes made", iid)
 
-        run_id = f"{run_name}-{iid[:20]}-{str(uuid.uuid4())[:6]}"
-        eval_dir = output_dir / "evals" / iid
-        eval_result = evaluate_patch(instance, patch, run_id=run_id, eval_dir=eval_dir)
-        result.update(eval_result)
-
+        result["patch"] = patch
         result["opencode_stdout"] = oc_result.stdout[-4000:] if oc_result.stdout else ""
         result["opencode_returncode"] = oc_result.returncode
+
+        if skip_eval:
+            # No Docker available (e.g. locked-down library Mac).
+            # Persist the patch into predictions.jsonl; grade later on a Docker box.
+            result["eval_skipped"] = True
+        else:
+            run_id = f"{run_name}-{iid[:20]}-{str(uuid.uuid4())[:6]}"
+            eval_dir = output_dir / "evals" / iid
+            eval_result = evaluate_patch(instance, patch, run_id=run_id, eval_dir=eval_dir)
+            result.update(eval_result)
 
     except subprocess.TimeoutExpired:
         result["error"] = "timeout"
@@ -207,6 +214,7 @@ async def run_parallel(
     max_steps: int,
     parallel: int,
     keep_workdir: bool,
+    skip_eval: bool = False,
 ) -> list[dict]:
     sem = asyncio.Semaphore(parallel)
     results: list[dict] = []
@@ -233,6 +241,7 @@ async def run_parallel(
                         proxy_url,
                         max_steps,
                         keep_workdir,
+                        skip_eval,
                     )
                     results.append(result)
                     queue.complete(iid)
@@ -271,6 +280,25 @@ def write_summary(results: list[dict], output_dir: Path, run_name: str) -> None:
     )
 
 
+def write_predictions_jsonl(results: list[dict], output_dir: Path, run_name: str) -> None:
+    """
+    Write SWE-bench-compatible predictions JSONL.
+    Lets you grade later on a machine that has Docker, even if eval was skipped here.
+    """
+    path = output_dir / "predictions.jsonl"
+    with path.open("w") as f:
+        for r in results:
+            patch = r.get("patch", "")
+            if patch is None:
+                patch = ""
+            f.write(json.dumps({
+                "instance_id": r["instance_id"],
+                "model_patch": patch,
+                "model_name_or_path": run_name,
+            }) + "\n")
+    log.info("Wrote %d predictions → %s", len(results), path)
+
+
 def load_existing_results(output_dir: Path) -> dict[str, dict]:
     """Load already-finished per-issue results for --resume."""
     traj_dir = output_dir / "trajectories"
@@ -302,6 +330,9 @@ def main():
                         help="Don't delete repo workdirs after eval")
     parser.add_argument("--resume", action="store_true",
                         help="Skip already-completed issues")
+    parser.add_argument("--no-eval", action="store_true",
+                        help="Don't run swebench evaluator (requires Docker). "
+                             "Still writes predictions.jsonl for later grading.")
     args = parser.parse_args()
 
     issues_path = Path(args.issues)
@@ -338,11 +369,13 @@ def main():
             max_steps=args.max_steps,
             parallel=args.parallel,
             keep_workdir=args.keep_workdirs,
+            skip_eval=args.no_eval,
         )
     )
 
     all_results = list(existing.values()) + new_results
     write_summary(all_results, output_dir, args.run_name)
+    write_predictions_jsonl(all_results, output_dir, args.run_name)
 
 
 if __name__ == "__main__":
