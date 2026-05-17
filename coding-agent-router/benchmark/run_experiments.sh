@@ -71,9 +71,10 @@ if [[ "${NO_EVAL:-0}" == "1" ]]; then
 fi
 
 parse_yaml_field() {
-    # cheap YAML reader: grep for "key:" at line start, strip key + whitespace + quotes
+    # cheap YAML reader: grep for "key:" at line start, strip key + whitespace + quotes.
+    # BSD sed (macOS default) doesn't interpret \s, so use the POSIX class.
     local file="$1" key="$2"
-    grep -E "^${key}:" "$file" | head -n1 | sed -E "s/^${key}:\s*//; s/^['\"]//; s/['\"]$//"
+    grep -E "^${key}:" "$file" | head -n1 | sed -E "s/^${key}:[[:space:]]*//; s/^['\"]//; s/['\"]$//"
 }
 
 start_proxy() {
@@ -117,6 +118,8 @@ for cfg_name in "${CONFIGS_TO_RUN[@]}"; do
     if [[ "${SMOKE:-0}" == "1" ]]; then
         issues="$SMOKE_ISSUES_FILE"
         max_steps=20  # cap step budget to keep smoke fast
+        : "${OPENCODE_TIMEOUT:=300}"  # 5 min per issue is plenty for wiring validation
+        export OPENCODE_TIMEOUT
     fi
 
     if [[ ! -f "$issues" ]]; then

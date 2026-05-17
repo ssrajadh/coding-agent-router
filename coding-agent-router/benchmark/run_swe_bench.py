@@ -107,8 +107,10 @@ def run_opencode(
     session_id: str,
     proxy_url: str,
     max_steps: int = 60,
-    timeout: int = 1800,
+    timeout: int | None = None,
 ) -> subprocess.CompletedProcess:
+    if timeout is None:
+        timeout = int(os.environ.get("OPENCODE_TIMEOUT", "1800"))
     import subprocess as sp
     prompt = (
         f"Resolve this GitHub issue:\n\n{instance['problem_statement']}\n\n"
@@ -122,8 +124,16 @@ def run_opencode(
     env["OPENAI_BASE_URL"] = proxy_url
     env["OPENAI_API_KEY"] = "not-needed"
 
+    # opencode >=1.x doesn't have --max-steps; pass model + auto-approve perms
+    # so the run is fully non-interactive. The `hybrid/proxy-default` provider
+    # is configured in ~/.config/opencode/opencode.jsonc by setup.sh.
     return sp.run(
-        ["opencode", "run", "--max-steps", str(max_steps), prompt],
+        [
+            "opencode", "run",
+            "--model", "hybrid/proxy-default",
+            "--dangerously-skip-permissions",
+            prompt,
+        ],
         cwd=workdir,
         env=env,
         capture_output=True,

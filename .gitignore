@@ -1,2 +1,15 @@
 .env
 __pycache__/
+
+# Runtime / experiment artifacts — don't commit, regenerated on every run
+coding-agent-router/.venv/
+coding-agent-router/runs/
+coding-agent-router/results/
+coding-agent-router/logs/
+coding-agent-router/results-bundle-*.tar.gz
+coding-agent-router/figures/
+coding-agent-router/analysis/summary.csv
+coding-agent-router/analysis/per_step.csv
+
+# Smoke-mode issue file generated at run time
+coding-agent-router/benchmark/issues_smoke3.json
