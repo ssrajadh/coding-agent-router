@@ -77,11 +77,51 @@ step_ollama_binary() {
         echo "✓ ollama at $USER_BIN/ollama"
         return
     fi
-    echo "→ Downloading ollama binary to $USER_BIN/ollama"
-    # Newer ollama macOS arm64 binary; works on any Apple Silicon Mac without admin.
-    curl -fsSL https://ollama.com/download/ollama-darwin -o "$USER_BIN/ollama"
+
+    # Try the standalone-binary URL first; on recent releases it 404s and the
+    # .zip is the only artifact. Fall back to extracting the CLI binary from
+    # the .app bundle inside Ollama-darwin.zip.
+    echo "→ Downloading ollama to $USER_BIN/ollama"
+    if curl -fsSL --max-time 120 \
+            https://ollama.com/download/ollama-darwin \
+            -o "$USER_BIN/ollama" 2>/dev/null; then
+        chmod +x "$USER_BIN/ollama"
+        if "$USER_BIN/ollama" --version >/dev/null 2>&1; then
+            echo "✓ ollama installed (direct binary)"
+            return
+        fi
+        # Got bytes but they aren't an executable — fall through to the zip path.
+        rm -f "$USER_BIN/ollama"
+    fi
+
+    echo "→ Direct binary unavailable, trying Ollama-darwin.zip"
+    local tmpdir
+    tmpdir="$(mktemp -d)"
+    trap 'rm -rf "$tmpdir"' RETURN
+    if ! curl -fsSL --max-time 300 \
+            https://ollama.com/download/Ollama-darwin.zip \
+            -o "$tmpdir/Ollama.zip"; then
+        echo "✗ Could not download Ollama-darwin.zip" >&2
+        echo "  Manual fallback: brew install ollama (needs admin), or" >&2
+        echo "  download from https://ollama.com/download and extract." >&2
+        return 1
+    fi
+    if ! command -v unzip >/dev/null 2>&1; then
+        echo "✗ unzip not available — please install it or extract manually" >&2
+        return 1
+    fi
+    unzip -q "$tmpdir/Ollama.zip" -d "$tmpdir/"
+    # The CLI binary lives at Ollama.app/Contents/Resources/ollama on recent
+    # releases. Older bundles put it under Contents/MacOS/. Search broadly.
+    local found
+    found="$(find "$tmpdir" -type f -name ollama -perm -u+x 2>/dev/null | head -n1)"
+    if [[ -z "$found" ]]; then
+        echo "✗ Couldn't locate the ollama CLI inside the bundle" >&2
+        return 1
+    fi
+    cp "$found" "$USER_BIN/ollama"
     chmod +x "$USER_BIN/ollama"
-    echo "✓ ollama installed"
+    echo "✓ ollama installed (extracted from .zip)"
 }
 
 # ---------------------------------------------------------------------------
@@ -142,15 +182,49 @@ EOF
 step_opencode() {
     if command -v opencode >/dev/null 2>&1; then
         echo "✓ opencode on PATH"
+    else
+        echo "→ Installing opencode (user-level, into ~/.opencode/bin)"
+        curl -fsSL https://opencode.ai/install | bash
+        if ! command -v opencode >/dev/null 2>&1; then
+            echo "✗ opencode install ran but binary not on PATH — add ~/.opencode/bin to PATH" >&2
+            return 1
+        fi
+        echo "✓ opencode installed"
+    fi
+
+    # Register the "hybrid" provider so `opencode run --model hybrid/proxy-default`
+    # actually has somewhere to route. Without this, the run_swe_bench harness
+    # silently does nothing on a fresh box (see SMOKE_TEST_REPORT.md §3).
+    local cfg_dir="$HOME/.config/opencode"
+    local cfg_path="$cfg_dir/opencode.jsonc"
+    mkdir -p "$cfg_dir"
+    if [[ -f "$cfg_path" ]] && grep -q '"hybrid"' "$cfg_path" 2>/dev/null; then
+        echo "✓ opencode hybrid provider already configured"
         return
     fi
-    echo "→ Installing opencode (user-level, into ~/.opencode/bin)"
-    curl -fsSL https://opencode.ai/install | bash
-    if ! command -v opencode >/dev/null 2>&1; then
-        echo "✗ opencode install ran but binary not on PATH — add ~/.opencode/bin to PATH" >&2
-        return 1
+    if [[ -f "$cfg_path" ]]; then
+        echo "ℹ Existing opencode config at $cfg_path — leaving it alone." >&2
+        echo "  Add a 'hybrid' provider manually (template in SMOKE_TEST_REPORT.md)." >&2
+        return
     fi
-    echo "✓ opencode installed"
+    echo "→ Writing opencode hybrid provider config to $cfg_path"
+    cat >"$cfg_path" <<'JSONC'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "hybrid": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Hybrid Proxy",
+      "options": {
+        "baseURL": "http://127.0.0.1:8000/v1",
+        "apiKey": "not-needed"
+      },
+      "models": { "proxy-default": { "name": "Hybrid Default" } }
+    }
+  }
+}
+JSONC
+    echo "✓ opencode hybrid provider registered"
 }
 
 # ---------------------------------------------------------------------------
