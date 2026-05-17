@@ -9,12 +9,15 @@
 #   4. Tar up results for the report
 #
 # Env vars:
-#   SMOKE=1       — 3 issues × 3 configs × small model. ~15 min on M1 Pro 16GB.
-#                   Use this on your MBP first to validate the pipeline.
-#   NO_EVAL=1     — Skip the swebench Docker evaluator (auto-detected if Docker
-#                   is not on PATH). Predictions JSONL still gets written.
-#   LOCAL_MODEL=… — Override the local model name. Default is the 16K variant
-#                   that setup.sh creates.
+#   SMOKE=1          — 3 issues × 3 configs × small model. ~15 min on M1 Pro 16GB.
+#                      Use this on your MBP first to validate the pipeline.
+#   NO_EVAL=1        — Skip the swebench Docker evaluator (auto-detected if
+#                      Docker is not on PATH). Predictions JSONL still written.
+#   FRONTIER_ONLY=1  — Run only all_frontier (laptop split). Skips Ollama
+#                      install + does grading inline.
+#   CONFIGS="..."    — Whitespace-separated subset of configs to run.
+#   LOCAL_MODEL=…    — Override the local model name. Default is the 16K
+#                      variant that setup.sh creates.
 #
 # Output:
 #   results/<config>/summary.json          — pass/fail counts
@@ -39,7 +42,11 @@ export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$PATH"
 echo "============================================================"
 echo "  STEP 1/4  Setup"
 echo "============================================================"
-./scripts/setup.sh
+if [[ "${FRONTIER_ONLY:-0}" == "1" && -z "${CONFIGS:-}" ]]; then
+    export CONFIGS="all_frontier"
+    echo "→ FRONTIER_ONLY=1: forcing CONFIGS=all_frontier"
+fi
+FRONTIER_ONLY="${FRONTIER_ONLY:-0}" ./scripts/setup.sh
 
 # Pick up LOCAL_MODEL setup.sh just printed, if the caller didn't already set one.
 if [[ -z "${LOCAL_MODEL:-}" ]]; then
