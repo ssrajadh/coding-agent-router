@@ -15,6 +15,8 @@
 #   LOCAL_MODEL       name of the 16K variant the proxy will use
 #                     (default: <LOCAL_MODEL_PULL>-16k)
 #   SMOKE             "1" → use qwen2.5-coder:3b instead (fits 16GB MBP)
+#   FRONTIER_ONLY     "1" → skip every Ollama step (laptop running all_frontier
+#                     doesn't need a local model)
 
 set -euo pipefail
 
@@ -179,13 +181,19 @@ step_env() {
 # ---------------------------------------------------------------------------
 
 step_python
-step_ollama_binary
-step_ollama_server
-step_model
+if [[ "${FRONTIER_ONLY:-0}" != "1" ]]; then
+    step_ollama_binary
+    step_ollama_server
+    step_model
+else
+    echo "→ FRONTIER_ONLY=1: skipping Ollama steps (laptop-only frontier runs)"
+fi
 step_opencode
 step_env
 
 echo
 echo "Setup complete. Next:"
-echo "  export LOCAL_MODEL=$LOCAL_MODEL"
+if [[ "${FRONTIER_ONLY:-0}" != "1" ]]; then
+    echo "  export LOCAL_MODEL=$LOCAL_MODEL"
+fi
 echo "  ./scripts/run_all.sh"
