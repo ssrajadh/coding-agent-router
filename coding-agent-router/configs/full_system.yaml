@@ -1,7 +1,7 @@
 # Headline config: heuristic features + confidence gate + failure-recovery
 # escalation. Decision tree lives in proxy/router.py::_full_decide.
 router_mode: full
-issues: benchmark/issues.json
+issues: benchmark/issues_subset20.json
 parallel: 2
 max_steps: 60
 depth_threshold: 20

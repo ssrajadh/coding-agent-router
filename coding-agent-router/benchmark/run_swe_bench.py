@@ -101,6 +101,45 @@ class WorkQueue:
 # OpenCode invocation
 # ---------------------------------------------------------------------------
 
+_OPENCODE_PROVIDER_CONFIG = """\
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "hybrid": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Hybrid Proxy",
+      "options": {
+        "baseURL": "%(base_url)s",
+        "apiKey": "not-needed"
+      },
+      "models": { "proxy-default": { "name": "Hybrid Default" } }
+    }
+  }
+}
+"""
+
+
+def _write_per_issue_opencode_config(session_id: str, proxy_url: str) -> Path:
+    """Write a temp opencode.jsonc whose `hybrid` provider baseURL bakes in the
+    session ID via the proxy's /sess/<id>/v1 route. Returns the dir to use as
+    XDG_CONFIG_HOME for the opencode subprocess so the per-issue config wins
+    over the system one.
+    """
+    import tempfile
+    tmp_root = Path(tempfile.mkdtemp(prefix="oc-sess-"))
+    (tmp_root / "opencode").mkdir()
+    base = proxy_url.rstrip("/")
+    # proxy_url is e.g. http://127.0.0.1:8000/v1 — strip the trailing /v1 so we
+    # can splice in the session path.
+    if base.endswith("/v1"):
+        base = base[:-3]
+    per_issue_base = f"{base}/sess/{session_id}/v1"
+    (tmp_root / "opencode" / "opencode.jsonc").write_text(
+        _OPENCODE_PROVIDER_CONFIG % {"base_url": per_issue_base}
+    )
+    return tmp_root
+
+
 def run_opencode(
     instance: dict,
     workdir: Path,
@@ -117,29 +156,35 @@ def run_opencode(
         "Make the minimal code changes required to fix the issue. "
         "Run the relevant tests to verify your fix before stopping."
     )
+
+    xdg_dir = _write_per_issue_opencode_config(session_id, proxy_url)
     env = os.environ.copy()
     env["OPENCODE_PROVIDER"] = "hybrid"
-    env["X_SESSION_ID"] = session_id
-    # Some opencode versions read OPENAI_BASE_URL for the provider URL
-    env["OPENAI_BASE_URL"] = proxy_url
+    env["XDG_CONFIG_HOME"] = str(xdg_dir)
+    # Belt-and-suspenders: opencode also reads OPENAI_BASE_URL on some versions.
+    base = proxy_url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    env["OPENAI_BASE_URL"] = f"{base}/sess/{session_id}/v1"
     env["OPENAI_API_KEY"] = "not-needed"
+    env["X_SESSION_ID"] = session_id
 
-    # opencode >=1.x doesn't have --max-steps; pass model + auto-approve perms
-    # so the run is fully non-interactive. The `hybrid/proxy-default` provider
-    # is configured in ~/.config/opencode/opencode.jsonc by setup.sh.
-    return sp.run(
-        [
-            "opencode", "run",
-            "--model", "hybrid/proxy-default",
-            "--dangerously-skip-permissions",
-            prompt,
-        ],
-        cwd=workdir,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    try:
+        return sp.run(
+            [
+                "opencode", "run",
+                "--model", "hybrid/proxy-default",
+                "--dangerously-skip-permissions",
+                prompt,
+            ],
+            cwd=workdir,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    finally:
+        shutil.rmtree(xdg_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

@@ -45,6 +45,13 @@ echo "============================================================"
 if [[ "${FRONTIER_ONLY:-0}" == "1" && -z "${CONFIGS:-}" ]]; then
     export CONFIGS="all_frontier"
     echo "→ FRONTIER_ONLY=1: forcing CONFIGS=all_frontier"
+elif [[ -z "${CONFIGS:-}" ]]; then
+    # Minimum viable config set for the paper's Pareto plot.
+    # random + format_check are skipped — random adds no signal vs the random
+    # baseline in the analysis, and format_check's confidence gate never fired
+    # in the 2026-05-17 run. Both are kept as future-work in the writeup.
+    export CONFIGS="all_local full_system"
+    echo "→ default CONFIGS=$CONFIGS"
 fi
 FRONTIER_ONLY="${FRONTIER_ONLY:-0}" ./scripts/setup.sh
 
@@ -53,7 +60,7 @@ if [[ -z "${LOCAL_MODEL:-}" ]]; then
     if [[ "${SMOKE:-0}" == "1" ]]; then
         export LOCAL_MODEL="qwen2.5-coder-3b-16k"
     else
-        export LOCAL_MODEL="qwen3-coder-8b-16k"
+        export LOCAL_MODEL="qwen2.5-coder-14b-16k"
     fi
 fi
 echo "Using LOCAL_MODEL=$LOCAL_MODEL"

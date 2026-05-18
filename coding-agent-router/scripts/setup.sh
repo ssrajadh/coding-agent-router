@@ -11,7 +11,7 @@
 # Re-running is safe: each step checks "already done" before acting.
 #
 # Env vars:
-#   LOCAL_MODEL_PULL  ollama model tag to pull (default: qwen3-coder:8b)
+#   LOCAL_MODEL_PULL  ollama model tag to pull (default: qwen2.5-coder:14b)
 #   LOCAL_MODEL       name of the 16K variant the proxy will use
 #                     (default: <LOCAL_MODEL_PULL>-16k)
 #   SMOKE             "1" → use qwen2.5-coder:3b instead (fits 16GB MBP)
@@ -39,7 +39,12 @@ if [[ "${SMOKE:-0}" == "1" ]]; then
     : "${LOCAL_MODEL_PULL:=qwen2.5-coder:3b}"
     echo "→ SMOKE mode: using smaller model for 16 GB MBP"
 else
-    : "${LOCAL_MODEL_PULL:=qwen3-coder:8b}"
+    # qwen3-coder on Ollama only has 30b and 480b tags — no small dense
+    # checkpoint exists. qwen2.5-coder:14b is the largest dense coder model
+    # that still fits 32 GB M1 Max comfortably alongside opencode + proxy +
+    # macOS. The 7b variant is borderline for driving opencode's tool loop
+    # and produced empty patches on the 2026-05-17 library run.
+    : "${LOCAL_MODEL_PULL:=qwen2.5-coder:14b}"
 fi
 : "${LOCAL_MODEL:=${LOCAL_MODEL_PULL//:/-}-16k}"
 
