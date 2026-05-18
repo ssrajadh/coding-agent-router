@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from .backends import OllamaBackend, NIMBackend, RateLimitError
 from .confidence import parse_response_quality, should_escalate
@@ -45,8 +45,9 @@ async def _handle(body: dict, trajectory_id: str) -> JSONResponse:
     traj = trajectory_store.get_or_create(trajectory_id)
     decision = router.decide(body, traj)
     log.info(
-        "req=%s traj=%s -> %s (%s)  step=%d",
+        "req=%s traj=%s -> %s (%s)  step=%d  stream=%s tools=%d",
         request_id, trajectory_id, decision.backend, decision.reason, len(traj.steps),
+        body.get("stream"), len(body.get("tools") or []),
     )
 
     backend = backends[decision.backend]
@@ -95,7 +96,46 @@ async def _handle(body: dict, trajectory_id: str) -> JSONResponse:
         local_failed=local_failed,
     )
     _flush_trajectory(traj)
+    if body.get("stream"):
+        return StreamingResponse(
+            _to_sse(response), media_type="text/event-stream"
+        )
     return JSONResponse(response)
+
+
+def _to_sse(response: dict):
+    # Convert a non-streaming chat-completion JSON into the OpenAI SSE chunk
+    # sequence opencode/ai-sdk expects: one chunk carrying the full delta
+    # (content + tool_calls), one chunk with finish_reason, then [DONE].
+    base = {
+        "id": response.get("id", ""),
+        "object": "chat.completion.chunk",
+        "created": response.get("created", int(time.time())),
+        "model": response.get("model", ""),
+    }
+    choice = (response.get("choices") or [{}])[0]
+    msg = choice.get("message") or {}
+    delta: dict = {"role": msg.get("role", "assistant")}
+    if msg.get("content") is not None:
+        delta["content"] = msg["content"]
+    if msg.get("tool_calls"):
+        delta["tool_calls"] = [
+            {
+                "index": i,
+                "id": tc.get("id"),
+                "type": tc.get("type", "function"),
+                "function": tc.get("function", {}),
+            }
+            for i, tc in enumerate(msg["tool_calls"])
+        ]
+    first = {**base, "choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
+    final = {
+        **base,
+        "choices": [{"index": 0, "delta": {}, "finish_reason": choice.get("finish_reason", "stop")}],
+    }
+    yield f"data: {json.dumps(first)}\n\n"
+    yield f"data: {json.dumps(final)}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 @app.post("/v1/chat/completions")

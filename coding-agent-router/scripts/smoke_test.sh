@@ -195,8 +195,8 @@ else
 fi
 
 # 4d. Both backends were exercised (full_system should escalate at least once)
-n_local="$(grep -cE '-> local ' "$PROXY_LOG" || true)"
-n_frontier="$(grep -cE '-> frontier ' "$PROXY_LOG" || true)"
+n_local="$(grep -cE -e '-> local ' "$PROXY_LOG" || true)"
+n_frontier="$(grep -cE -e '-> frontier ' "$PROXY_LOG" || true)"
 if [[ "$n_local" -gt 0 && "$n_frontier" -gt 0 ]]; then
     check "both local + frontier called (local=$n_local, frontier=$n_frontier)" 0
 else

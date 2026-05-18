@@ -20,7 +20,10 @@ from pathlib import Path
 
 def setup_repo(instance: dict, workdir: Path) -> None:
     """Clone the repo at base_commit into workdir."""
-    workdir.mkdir(parents=True, exist_ok=True)
+    if workdir.exists():
+        import shutil
+        shutil.rmtree(workdir)
+    workdir.parent.mkdir(parents=True, exist_ok=True)
     repo = instance.get("repo", "")
     base_commit = instance["base_commit"]
 

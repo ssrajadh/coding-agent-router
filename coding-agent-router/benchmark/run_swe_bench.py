@@ -175,6 +175,7 @@ def run_opencode(
                 "opencode", "run",
                 "--model", "hybrid/proxy-default",
                 "--dangerously-skip-permissions",
+                "--print-logs", "--log-level", "DEBUG",
                 prompt,
             ],
             cwd=workdir,
@@ -202,7 +203,12 @@ def run_issue(
 ) -> dict:
     iid = instance["instance_id"]
     session_id = f"{run_name}/{iid}"
-    workdir = output_dir / "workdirs" / iid
+    # Workdirs MUST live outside this project's git tree — opencode walks up
+    # looking for the project root, and if the workdir is nested inside our
+    # repo it'll route grep/edit at the parent project instead of the cloned
+    # target. Anchor at $HOME/.cache so it's stable across reruns.
+    workdir_root = Path(os.environ.get("SWE_WORKDIR_ROOT") or (Path.home() / ".cache" / "oc-router-runs"))
+    workdir = workdir_root / run_name / iid
     traj_dir = output_dir / "trajectories"
     traj_dir.mkdir(parents=True, exist_ok=True)
 
@@ -226,6 +232,7 @@ def run_issue(
 
         result["patch"] = patch
         result["opencode_stdout"] = oc_result.stdout[-4000:] if oc_result.stdout else ""
+        result["opencode_stderr"] = oc_result.stderr[-4000:] if oc_result.stderr else ""
         result["opencode_returncode"] = oc_result.returncode
 
         if skip_eval:

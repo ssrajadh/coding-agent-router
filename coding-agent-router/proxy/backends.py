@@ -15,6 +15,7 @@ class OllamaBackend:
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=1, max=8))
     async def chat_completion(self, body: dict) -> dict:
         payload = {**body, "model": self.model, "stream": False}
+        payload.pop("stream_options", None)
         r = await self.client.post(
             f"{self.base_url}/v1/chat/completions", json=payload
         )
@@ -46,9 +47,16 @@ class NIMBackend:
         )
         async def _attempt() -> dict:
             payload = {**body, "model": self.model, "stream": False}
+            payload.pop("stream_options", None)
             r = await self.client.post(f"{self.base_url}/chat/completions", json=payload)
             if r.status_code == 429:
                 raise _RetryableRateLimit("nim 429")
+            if r.status_code >= 400:
+                import logging
+                logging.getLogger("proxy").error(
+                    "NIM %d body=%s payload_keys=%s",
+                    r.status_code, r.text[:1000], list(payload.keys()),
+                )
             r.raise_for_status()
             return r.json()
 
