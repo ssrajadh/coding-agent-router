@@ -7,7 +7,6 @@ coding-agent-router/runs/
 coding-agent-router/results/
 coding-agent-router/logs/
 coding-agent-router/results-bundle-*.tar.gz
-coding-agent-router/figures/
 coding-agent-router/analysis/summary.csv
 coding-agent-router/analysis/per_step.csv
 
